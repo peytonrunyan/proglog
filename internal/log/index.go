@@ -19,9 +19,9 @@ var (
 // Struct for our index. Holds a persistent index file and a memory mapped file
 // Size is the size of the index file and tells us where our next entry should be appended
 type index struct {
-	file *os.File
-	mmap gommap.MMap
-	size uint64
+	file *os.File    // index file
+	mmap gommap.MMap // memory mapped index file
+	size uint64      // size of the index file - where our next entry should be appended
 }
 
 // Creates an index for the given file. The file's size is truncated to the
@@ -88,8 +88,25 @@ func (idx *index) Read(offsetGiven int64) (offsetUsed uint32, storePosition uint
 		return 0, 0, io.EOF
 	}
 	entryStart := uint64(offsetUsed) * entryWidth
-	offsetUsed = enc.Uint32(idx.mmap[entryStart:offWidth]) // set offset to actual listed offset at location
-	// return last 8 bits of the entry
+	// set offset to actual listed offset at entry location
+	offsetUsed = enc.Uint32(idx.mmap[entryStart:offWidth])
+	// get last 8 bits of the entry
 	storePosition = enc.Uint64(idx.mmap[entryStart+offWidth : entryStart+entryWidth])
 	return offsetUsed, storePosition, nil
+}
+
+// Appends an entry with the provided offset and store location to the mmap index. Returns err.
+func (idx *index) Write(offset uint32, storePosition uint64) error {
+	if uint64(len(idx.mmap)) < (uint64(idx.size) + entryWidth) { // check for room
+		return io.EOF
+	}
+	enc.PutUint32(idx.mmap[idx.size:idx.size+offWidth], offset)
+	enc.PutUint64(idx.mmap[idx.size+offWidth:idx.size+entryWidth], storePosition)
+	idx.size += uint64(entryWidth)
+	return nil
+}
+
+// Return the filename of our index's persistent file.
+func (idx *index) Name() string {
+	return idx.file.Name()
 }
