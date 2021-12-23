@@ -20,7 +20,7 @@ type store struct {
 	File *os.File
 	mu   sync.Mutex
 	buf  *bufio.Writer
-	size uint64
+	size uint64 // The size of the store file, initially given by fstat.Size() in newStore()
 }
 
 func newStore(f *os.File) (*store, error) {
@@ -44,7 +44,8 @@ func newStore(f *os.File) (*store, error) {
 func (s *store) Append(data []byte) (uint64, uint64, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	pos := s.size
+	recordStart := s.size
+
 	// Write size of data so that we know how far to read for this message.
 	// This is written as the binary representation of the uint64 length, so it
 	// will always be 64 bits in length.
@@ -55,9 +56,9 @@ func (s *store) Append(data []byte) (uint64, uint64, error) {
 	if err != nil {
 		return 0, 0, err
 	}
-	bytesWritten += lenWidth // bytes written + offset for storing record length
-	s.size += uint64(bytesWritten)
-	return uint64(bytesWritten), pos, nil
+	bytesWritten += lenWidth       // bytes written + offset for storing record length
+	s.size += uint64(bytesWritten) // update file size to reflect appended record
+	return uint64(bytesWritten), recordStart, nil
 
 }
 
@@ -82,7 +83,7 @@ func (s *store) Read(pos uint64) ([]byte, error) {
 
 // Implements `ReadAt` on store with mutex and buffer flush. ReadAt reads len(b) bytes
 // starting at the offset, and writes them to byte slice b. It returns the number of bytes
-// read and error.
+// read and error. The byte slice is mutated, not returned.
 func (s *store) ReadAt(b []byte, offset int64) (int, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -101,4 +102,9 @@ func (s *store) Close() error {
 		return err
 	}
 	return s.File.Close()
+}
+
+// Return the name of the store's underlying file.
+func (s *store) Name() string {
+	return s.File.Name()
 }

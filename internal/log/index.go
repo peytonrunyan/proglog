@@ -8,8 +8,8 @@ import (
 )
 
 var (
-	offWidth uint64 = 4 // record's offset, stored as int32
-	posWidth uint64 = 8 // record's position, stored as uint64
+	offWidth uint64 = 4 // record's offset IN THE INDEX FILE, stored as int32
+	posWidth uint64 = 8 // record's position IN THE STORE FILE, stored as uint64
 
 	// The length of each record in our index. We can jump to a given record in the
 	// index by going to byte entryWidth*offset, e.g. the fourth record is at entryWidth*4
@@ -89,13 +89,14 @@ func (idx *index) Read(offsetGiven int64) (offsetUsed uint32, storePosition uint
 	}
 	entryStart := uint64(offsetUsed) * entryWidth
 	// set offset to actual listed offset at entry location
-	offsetUsed = enc.Uint32(idx.mmap[entryStart:offWidth])
+	offsetUsed = enc.Uint32(idx.mmap[entryStart : entryStart+offWidth])
 	// get last 8 bits of the entry
 	storePosition = enc.Uint64(idx.mmap[entryStart+offWidth : entryStart+entryWidth])
 	return offsetUsed, storePosition, nil
 }
 
-// Appends an entry with the provided offset and store location to the mmap index. Returns err.
+// Appends an entry to the index at the provided offset. The entry is information about where a
+// record is located in the store. Returns err.
 func (idx *index) Write(offset uint32, storePosition uint64) error {
 	if uint64(len(idx.mmap)) < (uint64(idx.size) + entryWidth) { // check for room
 		return io.EOF
